@@ -1,0 +1,410 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MMFC 评分校准实验台</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="overview-mode">
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">Offline rating calibration lab</p>
+      <h1>MMFC 评分校准实验台</h1>
+      <p class="lead">用导出的 BOFcomment.csv 验证评分者尺度校准、抽样稳定性、排名变化和异常评分者诊断。此工具独立于 Wix 项目运行。</p>
+    </div>
+    <div class="header-actions">
+      <button id="loadBundledBtn" type="button">加载内置三表</button>
+      <label class="file-pill">
+        导入评论表
+        <input id="csvFileInput" type="file" accept=".csv,text/csv">
+      </label>
+      <label class="file-pill">
+        导入作品表
+        <input id="worksFileInput" type="file" accept=".csv,text/csv">
+      </label>
+      <label class="file-pill">
+        导入报名表
+        <input id="registrationsFileInput" type="file" accept=".csv,text/csv">
+      </label>
+      <button id="exportWorksBtn" type="button" disabled>导出作品结果</button>
+      <button id="exportRatersBtn" type="button" disabled>导出评分者结果</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel status-panel">
+      <div>
+        <strong id="datasetName">尚未加载数据</strong>
+        <span id="statusText">请加载 CSV。浏览器会在本地完成所有计算。</span>
+      </div>
+      <div class="badge-row" id="dataBadges"></div>
+    </section>
+
+    <section class="panel controls-panel">
+      <div class="section-title">
+        <h2>实验参数</h2>
+        <p>调整参数会即时重算。先用保守参数观察，再决定是否适合进入正式网站。</p>
+      </div>
+      <div class="controls-grid">
+        <label>
+          校准模型
+          <select id="modelSelect">
+            <option value="affine">仿射校准 x' = a x + b</option>
+            <option value="bias">只校准偏移 x' = x + b</option>
+          </select>
+        </label>
+        <label>
+          作品风险统计最少评分数
+          <input id="minWorkRatings" type="number" min="1" max="50" value="8">
+        </label>
+        <label>
+          评分者参与校准最少评分数
+          <input id="minRaterRatings" type="number" min="2" max="100" value="8">
+        </label>
+        <label>
+          参数收缩基准 N
+          <input id="shrinkN" type="number" min="1" max="100" value="12">
+        </label>
+        <label>
+          最大迭代轮数
+          <input id="maxIterations" type="number" min="1" max="200" value="60">
+        </label>
+        <label>
+          收敛阈值
+          <input id="tolerance" type="number" min="0.001" max="10" step="0.001" value="0.01">
+        </label>
+        <label>
+          异常偏移阈值
+          <input id="biasThreshold" type="number" min="10" max="300" value="80">
+        </label>
+        <label>
+          评分下限 / 上限
+          <span class="two-inputs">
+            <input id="scoreMin" type="number" value="100">
+            <input id="scoreMax" type="number" value="1000">
+          </span>
+        </label>
+        <label class="check-line">
+          <input id="excludeReplies" type="checkbox" checked>
+          排除楼中楼回复
+        </label>
+        <label class="check-line">
+          <input id="useWorksTable" type="checkbox" checked>
+          使用作品表元数据
+        </label>
+        <label class="check-line">
+          <input id="excludeSelfComments" type="checkbox" checked>
+          排除作者 Sc 自评
+        </label>
+        <label class="check-line">
+          <input id="excludeDqRatings" type="checkbox">
+          校准样本排除已淘汰作品
+        </label>
+        <label class="check-line">
+          <input id="useRegistrationsTable" type="checkbox" checked>
+          使用报名表高权重
+        </label>
+        <label class="check-line">
+          <input id="useHighWeight" type="checkbox" checked>
+          Qualified 评分 x2
+        </label>
+        <label>
+          Qualified 权重倍数
+          <input id="highWeightMultiplier" type="number" min="1" max="5" step="0.1" value="2">
+        </label>
+        <label class="check-line">
+          <input id="clampScores" type="checkbox" checked>
+          校准后分数限制在评分范围内
+        </label>
+      </div>
+    </section>
+
+    <section class="metric-grid" id="metricGrid"></section>
+
+    <section class="panel note-panel">
+      <div class="section-title">
+        <h2>当前数据口径</h2>
+      </div>
+      <div class="note-grid">
+        <div>
+          <h3>已实现</h3>
+          <p>从 <code>BOFcomment.csv</code>、<code>作品提交.csv</code>、<code>比赛报名.csv</code> 读取评论、作品作者、淘汰状态和 Qualified 身份，构建“作品 x 评分者”的稀疏评分矩阵。</p>
+        </div>
+        <div>
+          <h3>网站口径复现</h3>
+          <p>默认排除楼中楼和作者 Sc 自评；已淘汰作品照常写排名，且默认保留其评分样本用于估计评分者习惯。Qualified 评分默认按 2 票计。</p>
+        </div>
+        <div>
+          <h3>校准逻辑</h3>
+          <p>先用作品原始均分初始化 <code>q</code>，再为每个评分者拟合 <code>a,b</code>，重算作品均分，循环到收敛。评分次数少的评分者会向“不校准”收缩。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel explanation-panel">
+      <div class="section-title">
+        <h2>参数与列说明</h2>
+        <p>这里解释每个关键参数和表格列的含义，以及算法为什么会对某些评分做抬高或压低。</p>
+      </div>
+
+      <details open>
+        <summary>为什么会修正某个评分者的分数</summary>
+        <div class="explain-body">
+          <p>工具会比较“这个人给出的分数”和“这些作品被所有人评价后的当前估计分”。如果某个人长期比作品共识低，说明他偏严，校准会抬高他的分；如果长期比作品共识高，说明他偏松，校准会压低他的分。</p>
+          <div class="formula-inline">校准后分数 <strong>x'</strong> = <strong>a</strong> * 原始分数 <strong>x</strong> + <strong>b</strong></div>
+          <ul>
+            <li><strong>a</strong> 表示分差尺度：如果 a 大于 1，说明这个人原本给分区间拉得不够开；如果 a 小于 1，说明这个人原本分差拉得太开。</li>
+            <li><strong>b</strong> 表示整体偏移：b 为正通常会整体抬高这个人的评分，b 为负通常会整体压低。</li>
+            <li><strong>600分修正</strong> 是最容易读的指标：如果是 +50，意思是这个人的 600 分大约会被校准成 650；如果是 -50，则大约会变成 550。</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>实验参数说明</summary>
+        <div class="definition-grid">
+          <div><strong>校准模型</strong><span>“只校准偏移”只判断偏严/偏松；“仿射校准”还会判断这个人的分差尺度是否异常。</span></div>
+          <div><strong>作品风险统计最少评分数</strong><span>不再决定是否写排名；所有有有效评分的作品都会排名。这个阈值只用于风险提示和“排名大幅变化”等汇总统计。</span></div>
+          <div><strong>评分者参与校准最少评分数</strong><span>评分次数太少时不估计个人偏差，避免因为样本巧合误判。</span></div>
+          <div><strong>参数收缩基准 N</strong><span>控制“少量评分者”的校准力度。N 越大，越保守。</span></div>
+          <div><strong>异常偏移阈值</strong><span>600分修正超过这个阈值的评分者会被标为风险项。</span></div>
+          <div><strong>Qualified 权重倍数</strong><span>开启后，Q 用户的每条评分在作品均分里按更高票重计算，默认复现网站的 x2 口径。</span></div>
+          <div><strong>校准样本排除 DQ</strong><span>严格模式。打开后，连估计评分者偏差也不使用淘汰作品评分。</span></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>作品结果表每列说明</summary>
+        <div class="definition-grid">
+          <div><strong>作品 / 标题</strong><span>作品编号和作品表里的曲名；DQ 标签表示作品表中 <code>isDQ=true</code>。</span></div>
+          <div><strong>评分数</strong><span>进入当前口径计算的正式评分条数，不包含楼中楼、自评和无效分。</span></div>
+          <div><strong>Q/普通</strong><span>该作品收到的 Qualified 评分数 / 普通评分数。</span></div>
+          <div><strong>原始均分</strong><span>校准前的作品分。开启 Q 权重时，这是加权均分。</span></div>
+          <div><strong>校准分</strong><span>把每个评分者的偏严/偏松校正后，重新算出的作品分。</span></div>
+          <div><strong>变化</strong><span>校准分 - 原始均分。正数表示作品被抬高，负数表示作品被压低。</span></div>
+          <div><strong>封面</strong><span>从作品表的 <code>bg</code>、<code>track的複本</code> 等图片字段读取 Wix 图片引用，并按网站 HTTP function 的方式生成 CDN 缩略图。</span></div>
+          <div><strong>原始/校准排名</strong><span>分别按原始均分和校准分排序得到的名次。这里不按 DQ 或入榜门槛置空，所有有有效评分的作品都会写排名。</span></div>
+          <div><strong>排名变化</strong><span>原始排名 - 校准排名。正数表示校准后名次上升，负数表示下降。</span></div>
+          <div><strong>标准差</strong><span>该作品收到的校准后评分分歧程度。越大说明评价越不一致。</span></div>
+          <div><strong>95% CI</strong><span>粗略不确定性区间。越大表示样本少或分歧大，排名更不稳。</span></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>评分者诊断表每列说明</summary>
+        <div class="definition-grid">
+          <div><strong>评分者 / 名称</strong><span>网站用户 ID 和报名表中的参赛显示名。点击评分者会在新窗口打开单人详情。</span></div>
+          <div><strong>Q</strong><span>是否在报名表里被标记为 Qualified。</span></div>
+          <div><strong>次数</strong><span>该评分者进入当前口径的正式评分数量。</span></div>
+          <div><strong>原始均分</strong><span>这个人所有原始评分的平均值。</span></div>
+          <div><strong>均值偏移</strong><span>这个人每条评分相对该作品“其他评分者均分”的平均偏移。正数偏松，负数偏严。</span></div>
+          <div><strong>a</strong><span>分差尺度参数。接近 1 最稳定；明显偏离 1 时需要看单人详情。</span></div>
+          <div><strong>b</strong><span>整体偏移参数。它和 a 一起决定实际修正方向。</span></div>
+          <div><strong>600/800分修正</strong><span>把该评分者给 600 或 800 时会被修正多少分。比单独看 a、b 更直观。</span></div>
+          <div><strong>标准差</strong><span>这个人自己的评分波动。过小可能不爱拉开分，过大可能给分尺度很跳。</span></div>
+          <div><strong>状态</strong><span>根据评分次数和异常阈值给出的快速判断，不能替代人工复核。</span></div>
+        </div>
+      </details>
+    </section>
+
+    <section class="charts-grid">
+      <div class="panel chart-card">
+        <div class="section-title"><h2>分数分布</h2><p>检查整体给分是否集中、是否存在极端高低分堆积。</p></div>
+        <div id="scoreHistogram" class="chart"></div>
+      </div>
+      <div class="panel chart-card">
+        <div class="section-title"><h2>作品评分数覆盖</h2><p>作品评分数越低，排名越容易受抽样影响。</p></div>
+        <div id="workCoverageChart" class="chart"></div>
+      </div>
+      <div class="panel chart-card">
+        <div class="section-title"><h2>评分者活跃度</h2><p>评分次数决定校准参数的可信度。</p></div>
+        <div id="raterCoverageChart" class="chart"></div>
+      </div>
+      <div class="panel chart-card">
+        <div class="section-title"><h2>原始分 vs 校准分</h2><p>偏离对角线越多，说明校准改变越大。</p></div>
+        <div id="rawVsCalChart" class="chart"></div>
+      </div>
+      <div class="panel chart-card">
+        <div class="section-title"><h2>排名变化最大作品</h2><p>上升/下降过大的作品需要人工复核评分样本。</p></div>
+        <div id="rankChangeChart" class="chart"></div>
+      </div>
+      <div class="panel chart-card">
+        <div class="section-title"><h2>评分者校准参数</h2><p>横轴为评分次数，纵轴为 600 分处的校准修正。</p></div>
+        <div id="raterBiasChart" class="chart"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <h2>风险提示</h2>
+        <p>评分者风险来自 600 分修正过大或斜率异常；作品风险来自评分分歧较大或排名变化较大。点击 ID 或封面可打开详细可视化。</p>
+      </div>
+      <div id="warningsGrid" class="warning-grid"></div>
+    </section>
+
+    <section class="panel">
+      <div class="table-header">
+        <div class="section-title">
+          <h2>作品结果</h2>
+          <p>对比原始均分、校准后分数、完整排名和不确定性。点击作品 ID 会在新窗口打开该作品的详细可视化。</p>
+        </div>
+        <input id="workSearch" type="search" placeholder="搜索作品 ID">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>封面</th>
+              <th><button type="button" class="sort-header" data-work-sort="workId">作品</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="title">标题</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="count">评分数</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="highWeightCount">Q/普通</button></th>
+              <th class="score-pair-from"><button type="button" class="sort-header" data-work-sort="rawMean">原始均分</button></th>
+              <th class="score-pair-to"><button type="button" class="sort-header" data-work-sort="calibratedMean">校准分</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="scoreDelta">变化</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="rawRank">原始排名</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="calibratedRank">校准排名</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="rankChange">排名变化</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="calibratedStd">标准差</button></th>
+              <th><button type="button" class="sort-header" data-work-sort="calibratedCi95">95% CI</button></th>
+            </tr>
+          </thead>
+          <tbody id="worksTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="table-header">
+        <div class="section-title">
+          <h2>评分者诊断</h2>
+          <p>偏移、斜率和评分次数用于判断评分尺度是否稳定。点击评分者 ID 会在新窗口打开该用户的详细可视化。</p>
+        </div>
+        <input id="raterSearch" type="search" placeholder="搜索评分者 ID">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>评分者</th>
+              <th>名称</th>
+              <th>Q</th>
+              <th>次数</th>
+              <th>原始均分</th>
+              <th>均值偏移</th>
+              <th>a</th>
+              <th>b</th>
+              <th>600分修正</th>
+              <th>800分修正</th>
+              <th>标准差</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody id="ratersTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" id="raterDetailPanel">
+      <div class="table-header">
+        <div class="section-title">
+          <h2>单评分者详情</h2>
+          <p>选择评分者后，查看这个人给过哪些作品、原始分如何分布、和作品共识差多少、每条评分被如何校准。</p>
+        </div>
+        <select id="raterDetailSelect"></select>
+      </div>
+      <div id="raterProfile" class="profile-summary"></div>
+      <div class="charts-grid detail-charts">
+        <div class="chart-card">
+          <div class="section-title"><h2>该评分者分数分布</h2><p>看这个人整体偏爱给高分还是低分。</p></div>
+          <div id="raterScoreHistogram" class="chart small-chart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title"><h2>给分 vs 作品均分</h2><p>点在线下方偏严，在线上方偏松。</p></div>
+          <div id="raterAgreementChart" class="chart small-chart"></div>
+        </div>
+        <div class="chart-card wide">
+          <div class="section-title"><h2>单条评分校准变化</h2><p>显示变化幅度最大的作品，正数表示该条评分被抬高。</p></div>
+          <div id="raterCorrectionChart" class="chart small-chart"></div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>作品</th>
+              <th>标题</th>
+              <th class="score-pair-from">原始分</th>
+              <th class="score-pair-to">校准分</th>
+              <th>变化</th>
+              <th>作品原始均分</th>
+              <th>相对其他人</th>
+              <th>作品校准排名</th>
+              <th>评论节选</th>
+            </tr>
+          </thead>
+          <tbody id="raterDetailTable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" id="workDetailPanel">
+      <div class="table-header">
+        <div class="section-title">
+          <h2>单作品评分明细</h2>
+          <p>看某个作品具体由哪些评分构成、哪些评分者影响最大，以及每条评分被校准后的变化。</p>
+        </div>
+        <select id="workDetailSelect"></select>
+      </div>
+      <div id="workProfile" class="profile-summary work-profile"></div>
+      <div class="charts-grid detail-charts">
+        <div class="chart-card">
+          <div class="section-title"><h3>原始/校准分布</h3><p>同一作品内，校准前后评分分布是否整体移动。</p></div>
+          <div id="workScoreHistogram" class="chart small-chart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title"><h3>给分位置</h3><p>每个点是一条评分，越偏离对角线说明校准越明显。</p></div>
+          <div id="workScoreScatter" class="chart small-chart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title"><h3>评分者修正来源</h3><p>展示每条评分因为评分者习惯被抬高或压低了多少。</p></div>
+          <div id="workCalibrationChart" class="chart small-chart"></div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title"><h3>相对作品均值</h3><p>校准后仍明显高/低于本作品均值的评分，适合人工复核。</p></div>
+          <div id="workDeviationChart" class="chart small-chart"></div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>评分者</th>
+              <th>Q</th>
+              <th>权重</th>
+              <th class="score-pair-from">原始分</th>
+              <th class="score-pair-to">校准分</th>
+              <th>变化</th>
+              <th>相对校准均分</th>
+              <th>评分者均分</th>
+              <th>a / b</th>
+              <th>评分者修正@600</th>
+              <th>时间</th>
+              <th>评论节选</th>
+            </tr>
+          </thead>
+          <tbody id="workDetailTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Standalone local tool. No data is uploaded. Generated for offline algorithm validation.</p>
+  </footer>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
+
