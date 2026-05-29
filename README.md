@@ -37,6 +37,16 @@ py -m http.server 8765 --bind 127.0.0.1
 http://127.0.0.1:8765/
 ```
 
+## GitHub Pages
+
+`demo-version` 分支会通过 GitHub Actions 发布到 GitHub Pages：
+
+```text
+https://hakureiyoru.github.io/maimai-rating-analysis-lab/
+```
+
+如果仓库还没有启用 Pages，请在 GitHub 仓库设置里进入 `Settings -> Pages`，把 `Build and deployment` 的 `Source` 设为 `GitHub Actions`。之后每次推送 `demo-version` 分支都会重新发布页面。
+
 页面默认会加载 `data` 目录下的三张表：
 
 - `comments.csv`
