@@ -691,22 +691,6 @@ async function loadBundledCsv() {
   rerun();
 }
 
-function ingestCsv(text, type, name) {
-  const rows = sanitizeRowsForDemo(type, parseCsv(text));
-  if (type === "comments") state.commentRows = rows;
-  if (type === "works") state.workRows = rows;
-  if (type === "registrations") state.registrationRows = rows;
-  state.csvTexts[type] = serializeCsvRows(rows);
-  rebuildMetadata();
-  state.datasetName = [
-    state.commentRows.length ? "评论表" : "无评论表",
-    state.workRows.length ? "作品表" : "无作品表",
-    state.registrationRows.length ? "报名表" : "无报名表",
-  ].join(" + ");
-  $("datasetName").textContent = `${state.datasetName}（刚导入 ${name}）`;
-  rerun();
-}
-
 function normalizeRows(rows, config, metadata) {
   const ratings = [];
   const skipped = {
@@ -1075,8 +1059,6 @@ function rerun() {
     state.result = analyzeRows(state.commentRows, config);
     renderAll();
     setStatus(`已完成：${state.result.history.length} 轮迭代，最大变化 ${fmt(state.result.history.at(-1)?.maxDelta, 4)}。`);
-    $("exportWorksBtn").disabled = false;
-    $("exportRatersBtn").disabled = false;
   } catch (error) {
     console.error(error);
     setStatus(`计算失败：${error.message}`, "negative");
@@ -1971,125 +1953,7 @@ function renderWorkDetail(result) {
   wireDetailLinks($("workDetailTable"));
 }
 
-function toCsv(rows, headers) {
-  const escape = (value) => {
-    const s = String(value ?? "");
-    return `"${s.replaceAll('"', '""')}"`;
-  };
-  return [
-    headers.map((h) => escape(h.label)).join(","),
-    ...rows.map((row) => headers.map((h) => escape(row[h.key])).join(",")),
-  ].join("\n");
-}
-
-function downloadText(filename, text) {
-  const blob = new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function exportWorks() {
-  const result = state.result;
-  if (!result) return;
-  const rows = result.workStats.map((w) => ({
-    workId: w.workId,
-    title: w.title,
-    coverThumbUrl: w.coverThumbUrl || "",
-    isDQ: w.isDQ ? "yes" : "no",
-    count: w.count,
-    highWeightCount: w.highWeightCount,
-    lowWeightCount: w.lowWeightCount,
-    rawMean: fmt(w.rawMean),
-    rawSimpleMean: fmt(w.rawSimpleMean),
-    calibratedMean: fmt(w.calibratedMean),
-    scoreDelta: fmt(w.scoreDelta),
-    rawRank: w.rawRank || "",
-    calibratedRank: w.calibratedRank || "",
-    rankChange: w.rankChange ?? "",
-    calibratedStd: fmt(w.calibratedStd),
-    calibratedCi95: w.calibratedCi95 == null ? "" : fmt(w.calibratedCi95),
-  }));
-  downloadText("mmfc-work-calibration.csv", toCsv(rows, [
-    { key: "workId", label: "作品ID" },
-    { key: "title", label: "标题" },
-    { key: "coverThumbUrl", label: "封面缩略图" },
-    { key: "isDQ", label: "是否DQ" },
-    { key: "count", label: "评分数" },
-    { key: "highWeightCount", label: "Q评分数" },
-    { key: "lowWeightCount", label: "普通评分数" },
-    { key: "rawMean", label: "原始加权均分" },
-    { key: "rawSimpleMean", label: "原始简单均分" },
-    { key: "calibratedMean", label: "校准分" },
-    { key: "scoreDelta", label: "分数变化" },
-    { key: "rawRank", label: "原始排名" },
-    { key: "calibratedRank", label: "校准排名" },
-    { key: "rankChange", label: "排名变化" },
-    { key: "calibratedStd", label: "校准标准差" },
-    { key: "calibratedCi95", label: "校准95CI" },
-  ]));
-}
-
-function exportRaters() {
-  const result = state.result;
-  if (!result) return;
-  const rows = result.raterStats.map((r) => ({
-    raterId: r.raterId,
-    raterName: r.raterName,
-    isHighQuality: r.isHighQuality ? "yes" : "no",
-    count: r.count,
-    rawMean: fmt(r.rawMean),
-    avgLeaveOneOutDelta: r.avgLeaveOneOutDelta == null ? "" : fmt(r.avgLeaveOneOutDelta),
-    a: fmt(r.a, 6),
-    b: fmt(r.b, 6),
-    correction600: fmt(r.correction600),
-    correction800: fmt(r.correction800),
-    rawStd: fmt(r.rawStd),
-    calibrationIterations: r.calibrationIterations || 0,
-    eligible: r.eligible ? "yes" : "no",
-    reason: r.reason,
-  }));
-  downloadText("mmfc-rater-calibration.csv", toCsv(rows, [
-    { key: "raterId", label: "评分者ID" },
-    { key: "raterName", label: "名称" },
-    { key: "isHighQuality", label: "是否Q" },
-    { key: "count", label: "评分次数" },
-    { key: "rawMean", label: "原始均分" },
-    { key: "avgLeaveOneOutDelta", label: "相对其他人均分偏移" },
-    { key: "a", label: "a" },
-    { key: "b", label: "b" },
-    { key: "correction600", label: "600分修正" },
-    { key: "correction800", label: "800分修正" },
-    { key: "rawStd", label: "标准差" },
-    { key: "calibrationIterations", label: "校准轮数" },
-    { key: "eligible", label: "是否参与校准" },
-    { key: "reason", label: "状态" },
-  ]));
-}
-
-function wireFileInput(id, type) {
-  $(id).addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const text = await file.text();
-    ingestCsv(text, type, file.name);
-  });
-}
-
 function wireEvents() {
-  $("loadBundledBtn").addEventListener("click", () => {
-    loadBundledCsv().catch((error) => setStatus(error.message, "negative"));
-  });
-
-  wireFileInput("csvFileInput", "comments");
-  wireFileInput("worksFileInput", "works");
-  wireFileInput("registrationsFileInput", "registrations");
-
   document.querySelectorAll("[data-work-sort]").forEach((button) => {
     button.addEventListener("click", () => setWorkSort(button.dataset.workSort));
   });
@@ -2113,8 +1977,6 @@ function wireEvents() {
     if (state.detailType === "work") updateDetailHistory("work", $("workDetailSelect").value);
     renderWorkDetail(state.result);
   });
-  $("exportWorksBtn").addEventListener("click", exportWorks);
-  $("exportRatersBtn").addEventListener("click", exportRaters);
   window.addEventListener("resize", debounce(() => {
     if (!state.result) return;
     if (isDetailMode()) {
@@ -2142,5 +2004,5 @@ async function loadInitialDataset() {
 
 wireEvents();
 loadInitialDataset().catch((error) => {
-  setStatus(`${error.message}。如果是直接双击 HTML 打开的，请用本地服务器或手动导入 CSV。`, "warn");
+  setStatus(`${error.message}。如果是直接双击 HTML 打开的，请用本地服务器访问。`, "warn");
 });

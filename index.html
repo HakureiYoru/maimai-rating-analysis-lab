@@ -13,30 +13,13 @@
       <h1>MMFC 评分校准展示版</h1>
       <p class="lead">使用已脱敏的数据展示评分者尺度校准、抽样稳定性、排名变化和异常评分者诊断。此工具独立于 Wix 项目运行。</p>
     </div>
-    <div class="header-actions">
-      <button id="loadBundledBtn" type="button">加载展示数据</button>
-      <label class="file-pill">
-        导入评论表
-        <input id="csvFileInput" type="file" accept=".csv,text/csv">
-      </label>
-      <label class="file-pill">
-        导入作品表
-        <input id="worksFileInput" type="file" accept=".csv,text/csv">
-      </label>
-      <label class="file-pill">
-        导入报名表
-        <input id="registrationsFileInput" type="file" accept=".csv,text/csv">
-      </label>
-      <button id="exportWorksBtn" type="button" disabled>导出作品结果</button>
-      <button id="exportRatersBtn" type="button" disabled>导出评分者结果</button>
-    </div>
   </header>
 
   <main>
     <section class="panel status-panel">
       <div>
         <strong id="datasetName">尚未加载数据</strong>
-        <span id="statusText">请加载已脱敏 CSV。浏览器会在本地完成所有计算。</span>
+        <span id="statusText">正在加载内置展示数据。浏览器会在本地完成所有计算。</span>
       </div>
       <div class="badge-row" id="dataBadges"></div>
     </section>

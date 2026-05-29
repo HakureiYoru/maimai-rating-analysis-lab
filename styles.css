@@ -40,8 +40,7 @@ select {
   font: inherit;
 }
 
-button,
-.file-pill {
+button {
   border: 1px solid var(--line);
   background: #26303d;
   color: var(--text);
@@ -51,8 +50,7 @@ button,
   transition: 160ms ease;
 }
 
-button:hover,
-.file-pill:hover {
+button:hover {
   background: #303b4a;
   border-color: #4a596c;
 }
@@ -133,29 +131,8 @@ h1 {
   margin-bottom: 0;
 }
 
-.header-actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 420px;
-}
-
-.detail-mode .header-actions {
-  display: none;
-}
-
-.detail-mode .app-header {
-  align-items: flex-start;
-}
-
 .overview-mode #raterDetailPanel,
 .overview-mode #workDetailPanel {
-  display: none;
-}
-
-.file-pill input {
   display: none;
 }
 
@@ -824,11 +801,6 @@ footer {
   .status-panel,
   .table-header {
     flex-direction: column;
-  }
-
-  .header-actions {
-    min-width: 0;
-    justify-content: flex-start;
   }
 
   main,
