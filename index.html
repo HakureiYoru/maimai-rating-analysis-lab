@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MMFC 评分校准实验台</title>
+  <title>MMFC 评分校准展示版</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body class="overview-mode">
   <header class="app-header">
     <div>
       <p class="eyebrow">Offline rating calibration lab</p>
-      <h1>MMFC 评分校准实验台</h1>
-      <p class="lead">用导出的 BOFcomment.csv 验证评分者尺度校准、抽样稳定性、排名变化和异常评分者诊断。此工具独立于 Wix 项目运行。</p>
+      <h1>MMFC 评分校准展示版</h1>
+      <p class="lead">使用已脱敏的数据展示评分者尺度校准、抽样稳定性、排名变化和异常评分者诊断。此工具独立于 Wix 项目运行。</p>
     </div>
     <div class="header-actions">
-      <button id="loadBundledBtn" type="button">加载内置三表</button>
+      <button id="loadBundledBtn" type="button">加载展示数据</button>
       <label class="file-pill">
         导入评论表
         <input id="csvFileInput" type="file" accept=".csv,text/csv">
@@ -36,88 +36,9 @@
     <section class="panel status-panel">
       <div>
         <strong id="datasetName">尚未加载数据</strong>
-        <span id="statusText">请加载 CSV。浏览器会在本地完成所有计算。</span>
+        <span id="statusText">请加载已脱敏 CSV。浏览器会在本地完成所有计算。</span>
       </div>
       <div class="badge-row" id="dataBadges"></div>
-    </section>
-
-    <section class="panel controls-panel">
-      <div class="section-title">
-        <h2>实验参数</h2>
-        <p>调整参数会即时重算。先用保守参数观察，再决定是否适合进入正式网站。</p>
-      </div>
-      <div class="controls-grid">
-        <label>
-          校准模型
-          <select id="modelSelect">
-            <option value="affine">仿射校准 x' = a x + b</option>
-            <option value="bias">只校准偏移 x' = x + b</option>
-          </select>
-        </label>
-        <label>
-          作品风险统计最少评分数
-          <input id="minWorkRatings" type="number" min="1" max="50" value="8">
-        </label>
-        <label>
-          评分者参与校准最少评分数
-          <input id="minRaterRatings" type="number" min="2" max="100" value="8">
-        </label>
-        <label>
-          参数收缩基准 N
-          <input id="shrinkN" type="number" min="1" max="100" value="12">
-        </label>
-        <label>
-          最大迭代轮数
-          <input id="maxIterations" type="number" min="1" max="200" value="60">
-        </label>
-        <label>
-          收敛阈值
-          <input id="tolerance" type="number" min="0.001" max="10" step="0.001" value="0.01">
-        </label>
-        <label>
-          异常偏移阈值
-          <input id="biasThreshold" type="number" min="10" max="300" value="80">
-        </label>
-        <label>
-          评分下限 / 上限
-          <span class="two-inputs">
-            <input id="scoreMin" type="number" value="100">
-            <input id="scoreMax" type="number" value="1000">
-          </span>
-        </label>
-        <label class="check-line">
-          <input id="excludeReplies" type="checkbox" checked>
-          排除楼中楼回复
-        </label>
-        <label class="check-line">
-          <input id="useWorksTable" type="checkbox" checked>
-          使用作品表元数据
-        </label>
-        <label class="check-line">
-          <input id="excludeSelfComments" type="checkbox" checked>
-          排除作者 Sc 自评
-        </label>
-        <label class="check-line">
-          <input id="excludeDqRatings" type="checkbox">
-          校准样本排除已淘汰作品
-        </label>
-        <label class="check-line">
-          <input id="useRegistrationsTable" type="checkbox" checked>
-          使用报名表高权重
-        </label>
-        <label class="check-line">
-          <input id="useHighWeight" type="checkbox" checked>
-          Qualified 评分 x2
-        </label>
-        <label>
-          Qualified 权重倍数
-          <input id="highWeightMultiplier" type="number" min="1" max="5" step="0.1" value="2">
-        </label>
-        <label class="check-line">
-          <input id="clampScores" type="checkbox" checked>
-          校准后分数限制在评分范围内
-        </label>
-      </div>
     </section>
 
     <section class="metric-grid" id="metricGrid"></section>
@@ -129,7 +50,7 @@
       <div class="note-grid">
         <div>
           <h3>已实现</h3>
-          <p>从 <code>BOFcomment.csv</code>、<code>作品提交.csv</code>、<code>比赛报名.csv</code> 读取评论、作品作者、淘汰状态和 Qualified 身份，构建“作品 x 评分者”的稀疏评分矩阵。</p>
+          <p>从已脱敏的 <code>BOFcomment.csv</code>、<code>作品提交.csv</code>、<code>比赛报名.csv</code> 读取评论、作品作者、淘汰状态和 Qualified 身份，构建“作品 x 评分者”的稀疏评分矩阵。</p>
         </div>
         <div>
           <h3>网站口径复现</h3>
@@ -144,8 +65,8 @@
 
     <section class="panel explanation-panel">
       <div class="section-title">
-        <h2>参数与列说明</h2>
-        <p>这里解释每个关键参数和表格列的含义，以及算法为什么会对某些评分做抬高或压低。</p>
+        <h2>固定口径与列说明</h2>
+        <p>这里解释展示版使用的固定计算口径和表格列含义，以及算法为什么会对某些评分做抬高或压低。</p>
       </div>
 
       <details open>
@@ -162,15 +83,15 @@
       </details>
 
       <details>
-        <summary>实验参数说明</summary>
+        <summary>固定计算口径说明</summary>
         <div class="definition-grid">
-          <div><strong>校准模型</strong><span>“只校准偏移”只判断偏严/偏松；“仿射校准”还会判断这个人的分差尺度是否异常。</span></div>
-          <div><strong>作品风险统计最少评分数</strong><span>不再决定是否写排名；所有有有效评分的作品都会排名。这个阈值只用于风险提示和“排名大幅变化”等汇总统计。</span></div>
-          <div><strong>评分者参与校准最少评分数</strong><span>评分次数太少时不估计个人偏差，避免因为样本巧合误判。</span></div>
-          <div><strong>参数收缩基准 N</strong><span>控制“少量评分者”的校准力度。N 越大，越保守。</span></div>
-          <div><strong>异常偏移阈值</strong><span>600分修正超过这个阈值的评分者会被标为风险项。</span></div>
-          <div><strong>Qualified 权重倍数</strong><span>开启后，Q 用户的每条评分在作品均分里按更高票重计算，默认复现网站的 x2 口径。</span></div>
-          <div><strong>校准样本排除 DQ</strong><span>严格模式。打开后，连估计评分者偏差也不使用淘汰作品评分。</span></div>
+          <div><strong>校准模型</strong><span>展示版固定使用仿射校准，同时修正评分者的整体偏高/偏低和分差尺度。</span></div>
+          <div><strong>作品风险统计</strong><span>所有有有效评分的作品都会排名；风险提示只统计评分数达到固定门槛的作品。</span></div>
+          <div><strong>评分者参与校准</strong><span>评分次数太少时不估计个人偏差，避免因为样本巧合误判。</span></div>
+          <div><strong>参数收缩</strong><span>少量评分者的校准力度会被收缩，更接近“不校准”，降低过拟合风险。</span></div>
+          <div><strong>异常偏移</strong><span>600分修正超过固定阈值的评分者会被标为风险项。</span></div>
+          <div><strong>Qualified 权重</strong><span>Q 用户的每条评分在作品均分里按更高票重计算，复现网站的 x2 口径。</span></div>
+          <div><strong>DQ 样本</strong><span>估计评分者偏差时保留已淘汰作品评分，避免样本过少导致校准不稳。</span></div>
         </div>
       </details>
 
@@ -194,7 +115,7 @@
       <details>
         <summary>评分者诊断表每列说明</summary>
         <div class="definition-grid">
-          <div><strong>评分者 / 名称</strong><span>网站用户 ID 和报名表中的参赛显示名。点击评分者会在新窗口打开单人详情。</span></div>
+          <div><strong>评分者 / 名称</strong><span>展示版中的匿名评分者编号和匿名显示名。点击评分者会在新窗口打开单人详情。</span></div>
           <div><strong>Q</strong><span>是否在报名表里被标记为 Qualified。</span></div>
           <div><strong>次数</strong><span>该评分者进入当前口径的正式评分数量。</span></div>
           <div><strong>原始均分</strong><span>这个人所有原始评分的平均值。</span></div>

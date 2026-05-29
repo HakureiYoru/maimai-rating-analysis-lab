@@ -1,5 +1,25 @@
 const $ = (id) => document.getElementById(id);
 const DATASET_SNAPSHOT_KEY = "mmfc-rating-analysis-lab-snapshot-v1";
+const DEMO_MODE = true;
+const DEMO_CONTROL_DEFAULTS = {
+  modelSelect: "affine",
+  minWorkRatings: 8,
+  minRaterRatings: 8,
+  shrinkN: 12,
+  maxIterations: 60,
+  tolerance: 0.01,
+  biasThreshold: 80,
+  scoreMin: 100,
+  scoreMax: 1000,
+  excludeReplies: true,
+  useWorksTable: true,
+  excludeSelfComments: true,
+  excludeDqRatings: false,
+  useRegistrationsTable: true,
+  useHighWeight: true,
+  highWeightMultiplier: 2,
+  clampScores: true,
+};
 
 const initialUrlParams = new URLSearchParams(window.location.search);
 const initialDetailType = ["work", "rater"].includes(initialUrlParams.get("detail"))
@@ -22,6 +42,7 @@ const state = {
   detailType: initialDetailType,
   detailId: initialUrlParams.get("id") || "",
   useStoredSnapshot: initialUrlParams.get("snapshot") === "local",
+  demoAnonymizer: createDemoAnonymizer(),
   workSort: {
     key: "calibratedRank",
     direction: "asc",
@@ -51,9 +72,20 @@ const controls = [
 ];
 
 const defaultHeader = {
-  title: "MMFC 评分校准实验台",
-  lead: "用导出的 BOFcomment.csv 验证评分者尺度校准、抽样稳定性、排名变化和异常评分者诊断。此工具独立于 Wix 项目运行。",
+  title: "MMFC 评分校准展示版",
+  lead: "使用已脱敏的数据展示评分者尺度校准、抽样稳定性、排名变化和异常评分者诊断。此工具独立于 Wix 项目运行。",
 };
+
+function readControlValue(id) {
+  const el = $(id);
+  if (!el) return DEMO_CONTROL_DEFAULTS[id];
+  return el.type === "checkbox" ? el.checked : el.value;
+}
+
+function readBooleanControl(id) {
+  const value = readControlValue(id);
+  return value === true || value === "true" || value === "1";
+}
 
 function isDetailMode() {
   return state.detailType === "work" || state.detailType === "rater";
@@ -103,14 +135,15 @@ function loadStoredDatasetSnapshot() {
     if (!csvTexts.comments) return false;
 
     applyControlSnapshot(snapshot.controls || {});
+    resetDemoAnonymizer();
+    state.commentRows = sanitizeRowsForDemo("comments", parseCsv(csvTexts.comments || ""));
+    state.workRows = sanitizeRowsForDemo("works", csvTexts.works ? parseCsv(csvTexts.works) : []);
+    state.registrationRows = sanitizeRowsForDemo("registrations", csvTexts.registrations ? parseCsv(csvTexts.registrations) : []);
     state.csvTexts = {
-      comments: csvTexts.comments || "",
-      works: csvTexts.works || "",
-      registrations: csvTexts.registrations || "",
+      comments: serializeCsvRows(state.commentRows),
+      works: serializeCsvRows(state.workRows),
+      registrations: serializeCsvRows(state.registrationRows),
     };
-    state.commentRows = parseCsv(state.csvTexts.comments);
-    state.workRows = state.csvTexts.works ? parseCsv(state.csvTexts.works) : [];
-    state.registrationRows = state.csvTexts.registrations ? parseCsv(state.csvTexts.registrations) : [];
     rebuildMetadata();
     state.datasetName = snapshot.datasetName || "本地缓存数据集";
     $("datasetName").textContent = `${state.datasetName}（详情窗口快照）`;
@@ -187,26 +220,26 @@ function applyPageMode() {
 }
 
 function getConfig() {
-  const min = Number($("scoreMin").value || 100);
-  const max = Number($("scoreMax").value || 1000);
+  const min = Number(readControlValue("scoreMin") || 100);
+  const max = Number(readControlValue("scoreMax") || 1000);
   return {
-    model: $("modelSelect").value,
-    minWorkRatings: Math.max(1, Number($("minWorkRatings").value || 8)),
-    minRaterRatings: Math.max(2, Number($("minRaterRatings").value || 8)),
-    shrinkN: Math.max(1, Number($("shrinkN").value || 12)),
-    maxIterations: Math.max(1, Number($("maxIterations").value || 60)),
-    tolerance: Math.max(0.0001, Number($("tolerance").value || 0.01)),
-    biasThreshold: Math.max(1, Number($("biasThreshold").value || 80)),
+    model: readControlValue("modelSelect") || "affine",
+    minWorkRatings: Math.max(1, Number(readControlValue("minWorkRatings") || 8)),
+    minRaterRatings: Math.max(2, Number(readControlValue("minRaterRatings") || 8)),
+    shrinkN: Math.max(1, Number(readControlValue("shrinkN") || 12)),
+    maxIterations: Math.max(1, Number(readControlValue("maxIterations") || 60)),
+    tolerance: Math.max(0.0001, Number(readControlValue("tolerance") || 0.01)),
+    biasThreshold: Math.max(1, Number(readControlValue("biasThreshold") || 80)),
     scoreMin: Math.min(min, max),
     scoreMax: Math.max(min, max),
-    excludeReplies: $("excludeReplies").checked,
-    useWorksTable: $("useWorksTable").checked,
-    excludeSelfComments: $("excludeSelfComments").checked,
-    excludeDqRatings: $("excludeDqRatings").checked,
-    useRegistrationsTable: $("useRegistrationsTable").checked,
-    useHighWeight: $("useHighWeight").checked,
-    highWeightMultiplier: Math.max(1, Number($("highWeightMultiplier").value || 2)),
-    clampScores: $("clampScores").checked,
+    excludeReplies: readBooleanControl("excludeReplies"),
+    useWorksTable: readBooleanControl("useWorksTable"),
+    excludeSelfComments: readBooleanControl("excludeSelfComments"),
+    excludeDqRatings: readBooleanControl("excludeDqRatings"),
+    useRegistrationsTable: readBooleanControl("useRegistrationsTable"),
+    useHighWeight: readBooleanControl("useHighWeight"),
+    highWeightMultiplier: Math.max(1, Number(readControlValue("highWeightMultiplier") || 2)),
+    clampScores: readBooleanControl("clampScores"),
     slopeMin: 0.55,
     slopeMax: 1.55,
   };
@@ -328,6 +361,189 @@ function parseCsv(text) {
     });
     return obj;
   });
+}
+
+function csvEscape(value) {
+  const s = String(value ?? "");
+  return `"${s.replaceAll('"', '""')}"`;
+}
+
+function serializeCsvRows(rows) {
+  if (!rows.length) return "";
+  const headers = [];
+  rows.forEach((row) => {
+    Object.keys(row).forEach((key) => {
+      if (!headers.includes(key)) headers.push(key);
+    });
+  });
+  return [
+    headers.map(csvEscape).join(","),
+    ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(",")),
+  ].join("\n");
+}
+
+function demoNumber(value, width = 4) {
+  return String(value).padStart(width, "0");
+}
+
+function createDemoAnonymizer() {
+  return {
+    userAliases: new Map(),
+    userCounter: 0,
+    rowAliases: {
+      comments: new Map(),
+      works: new Map(),
+      registrations: new Map(),
+      replyRefs: new Map(),
+    },
+    counters: {
+      comments: 0,
+      works: 0,
+      registrations: 0,
+      replyRefs: 0,
+    },
+  };
+}
+
+function demoUserAlias(rawValue, anonymizer) {
+  const key = String(rawValue ?? "").trim();
+  if (!key) return null;
+  const existingDemoId = key.match(/^user-(\d{4,})$/i);
+  if (existingDemoId) {
+    const number = existingDemoId[1];
+    anonymizer.userCounter = Math.max(anonymizer.userCounter, Number(number) || 0);
+    return { ownerId: `user-${number}`, displayName: `用户${number}`, designerName: `匿名作者${number}` };
+  }
+  if (!anonymizer.userAliases.has(key)) {
+    anonymizer.userCounter += 1;
+    const number = demoNumber(anonymizer.userCounter);
+    anonymizer.userAliases.set(key, {
+      ownerId: `user-${number}`,
+      displayName: `用户${number}`,
+      designerName: `匿名作者${number}`,
+    });
+  }
+  return anonymizer.userAliases.get(key);
+}
+
+function demoRowAlias(type, rawValue, index, anonymizer) {
+  const key = String(rawValue ?? "").trim() || `__row_${index}`;
+  if (!anonymizer.rowAliases[type].has(key)) {
+    anonymizer.counters[type] += 1;
+    const width = type === "comments" ? 6 : 4;
+    const prefix = type === "comments" ? "comment" : type === "works" ? "work-row" : "registration";
+    anonymizer.rowAliases[type].set(key, `${prefix}-${demoNumber(anonymizer.counters[type], width)}`);
+  }
+  return anonymizer.rowAliases[type].get(key);
+}
+
+function demoReplyAlias(rawValue, anonymizer) {
+  const key = String(rawValue ?? "").trim();
+  if (!key) return "";
+  if (anonymizer.rowAliases.comments.has(key)) return anonymizer.rowAliases.comments.get(key);
+  if (!anonymizer.rowAliases.replyRefs.has(key)) {
+    anonymizer.counters.replyRefs += 1;
+    anonymizer.rowAliases.replyRefs.set(key, `comment-ref-${demoNumber(anonymizer.counters.replyRefs, 6)}`);
+  }
+  return anonymizer.rowAliases.replyRefs.get(key);
+}
+
+function hidePrivateLinks(value) {
+  return String(value ?? "")
+    .replace(/<img\b[^>]*>/gi, "[图片已隐藏]")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, "[图片已隐藏]")
+    .replace(/\[[^\]]+]\(https?:\/\/[^)]+\)/gi, "[链接已隐藏]")
+    .replace(/https?:\/\/[^\s<>"')]+/gi, "[链接已隐藏]");
+}
+
+function anonymizeOwnerFields(row, anonymizer) {
+  const ownerAlias = demoUserAlias(firstNonEmpty(row, ["Owner", "_owner", "owner"]), anonymizer);
+  ["Owner", "_owner", "owner"].forEach((key) => {
+    if (key in row) row[key] = ownerAlias?.ownerId || "";
+  });
+  return ownerAlias;
+}
+
+function sanitizeCommentRows(rows, anonymizer) {
+  rows.forEach((row, index) => {
+    if ("ID" in row || "_id" in row) demoRowAlias("comments", firstNonEmpty(row, ["ID", "_id"]), index, anonymizer);
+  });
+  return rows.map((source, index) => {
+    const row = { ...source };
+    anonymizeOwnerFields(row, anonymizer);
+    const rowId = demoRowAlias("comments", firstNonEmpty(row, ["ID", "_id"]), index, anonymizer);
+    if ("ID" in row) row.ID = rowId;
+    if ("_id" in row) row._id = rowId;
+    if ("replyTo" in row) row.replyTo = demoReplyAlias(row.replyTo, anonymizer);
+    if ("comment" in row) row.comment = hidePrivateLinks(row.comment);
+    return row;
+  });
+}
+
+function sanitizeWorkRows(rows, anonymizer) {
+  return rows.map((source, index) => {
+    const row = { ...source };
+    const ownerAlias = anonymizeOwnerFields(row, anonymizer);
+    const rowId = demoRowAlias("works", firstNonEmpty(row, ["ID", "_id"]), index, anonymizer);
+    if ("ID" in row) row.ID = rowId;
+    if ("_id" in row) row._id = rowId;
+    if ("不要在designer栏位填写自己的真实ID！/ Do not put your real ID in the designer field ！" in row) {
+      row["不要在designer栏位填写自己的真实ID！/ Do not put your real ID in the designer field ！"] = ownerAlias?.designerName || "";
+    }
+    if ("Your account's Bilibili/Twitter/Youtube" in row) row["Your account's Bilibili/Twitter/Youtube"] = "";
+    return row;
+  });
+}
+
+function shouldKeepRegistrationField(key) {
+  return [
+    "您的ID",
+    "registrationName",
+    "firstName",
+    "isHighQuality",
+    "Qualified",
+    "Q",
+    "ID",
+    "_id",
+    "Created Date",
+    "Updated Date",
+    "提交時間",
+    "Owner",
+    "_owner",
+    "owner",
+  ].includes(key);
+}
+
+function sanitizeRegistrationRows(rows, anonymizer) {
+  return rows.map((source, index) => {
+    const row = { ...source };
+    let ownerAlias = anonymizeOwnerFields(row, anonymizer);
+    if (!ownerAlias) {
+      ownerAlias = demoUserAlias(firstNonEmpty(row, ["您的ID", "registrationName", "firstName", "ID"]), anonymizer);
+    }
+    ["您的ID", "registrationName", "firstName"].forEach((key) => {
+      if (key in row) row[key] = ownerAlias?.displayName || "";
+    });
+    const rowId = demoRowAlias("registrations", firstNonEmpty(row, ["ID", "_id"]), index, anonymizer);
+    if ("ID" in row) row.ID = rowId;
+    if ("_id" in row) row._id = rowId;
+    Object.keys(row).forEach((key) => {
+      if (!shouldKeepRegistrationField(key)) row[key] = "";
+    });
+    return row;
+  });
+}
+
+function sanitizeRowsForDemo(type, rows, anonymizer = state.demoAnonymizer) {
+  if (!DEMO_MODE) return rows;
+  if (type === "comments") return sanitizeCommentRows(rows, anonymizer);
+  if (type === "works") return sanitizeWorkRows(rows, anonymizer);
+  if (type === "registrations") return sanitizeRegistrationRows(rows, anonymizer);
+  return rows;
+}
+
+function resetDemoAnonymizer() {
+  state.demoAnonymizer = createDemoAnonymizer();
 }
 
 function firstNonEmpty(row, keys) {
@@ -452,7 +668,7 @@ async function fetchCsvIfExists(path) {
 }
 
 async function loadBundledCsv() {
-  setStatus("正在读取 data 目录中的三张 CSV ...");
+  setStatus("正在读取 data 目录中的展示 CSV ...");
   const [commentsText, worksText, registrationsText] = await Promise.all([
     fetchCsvIfExists("./data/BOFcomment.csv"),
     fetchCsvIfExists("./data/作品提交.csv"),
@@ -460,14 +676,15 @@ async function loadBundledCsv() {
   ]);
 
   if (!commentsText) throw new Error("无法读取 data/BOFcomment.csv");
+  resetDemoAnonymizer();
+  state.commentRows = sanitizeRowsForDemo("comments", parseCsv(commentsText));
+  state.workRows = sanitizeRowsForDemo("works", worksText ? parseCsv(worksText) : []);
+  state.registrationRows = sanitizeRowsForDemo("registrations", registrationsText ? parseCsv(registrationsText) : []);
   state.csvTexts = {
-    comments: commentsText,
-    works: worksText || "",
-    registrations: registrationsText || "",
+    comments: serializeCsvRows(state.commentRows),
+    works: serializeCsvRows(state.workRows),
+    registrations: serializeCsvRows(state.registrationRows),
   };
-  state.commentRows = parseCsv(commentsText);
-  state.workRows = worksText ? parseCsv(worksText) : [];
-  state.registrationRows = registrationsText ? parseCsv(registrationsText) : [];
   rebuildMetadata();
   state.datasetName = `BOFcomment.csv + ${state.workRows.length ? "作品提交.csv" : "无作品表"} + ${state.registrationRows.length ? "比赛报名.csv" : "无报名表"}`;
   $("datasetName").textContent = state.datasetName;
@@ -475,11 +692,11 @@ async function loadBundledCsv() {
 }
 
 function ingestCsv(text, type, name) {
-  const rows = parseCsv(text);
+  const rows = sanitizeRowsForDemo(type, parseCsv(text));
   if (type === "comments") state.commentRows = rows;
   if (type === "works") state.workRows = rows;
   if (type === "registrations") state.registrationRows = rows;
-  state.csvTexts[type] = text;
+  state.csvTexts[type] = serializeCsvRows(rows);
   rebuildMetadata();
   state.datasetName = [
     state.commentRows.length ? "评论表" : "无评论表",
@@ -849,7 +1066,7 @@ function analyzeRows(rows, config) {
 
 function rerun() {
   if (!state.commentRows.length) {
-    setStatus("请先加载评论表 BOFcomment.csv。");
+    setStatus("请先加载已脱敏评论表 BOFcomment.csv。");
     return;
   }
   const config = getConfig();
@@ -1878,8 +2095,10 @@ function wireEvents() {
   });
 
   controls.forEach((id) => {
-    $(id).addEventListener("change", rerun);
-    if ($(id).type === "number") $(id).addEventListener("input", debounce(rerun, 250));
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("change", rerun);
+    if (el.type === "number") el.addEventListener("input", debounce(rerun, 250));
   });
 
   $("workSearch").addEventListener("input", debounce(() => state.result && renderWorkTable(state.result), 180));
