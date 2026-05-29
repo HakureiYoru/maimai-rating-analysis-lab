@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -202,6 +202,7 @@
           <div><strong>a</strong><span>分差尺度参数。接近 1 最稳定；明显偏离 1 时需要看单人详情。</span></div>
           <div><strong>b</strong><span>整体偏移参数。它和 a 一起决定实际修正方向。</span></div>
           <div><strong>600/800分修正</strong><span>把该评分者给 600 或 800 时会被修正多少分。比单独看 a、b 更直观。</span></div>
+          <div><strong>校准轮数</strong><span>该评分者实际参与参数拟合的全局迭代轮数；未参与校准时显示 0 轮。</span></div>
           <div><strong>标准差</strong><span>这个人自己的评分波动。过小可能不爱拉开分，过大可能给分尺度很跳。</span></div>
           <div><strong>状态</strong><span>根据评分次数和异常阈值给出的快速判断，不能替代人工复核。</span></div>
         </div>
@@ -298,6 +299,7 @@
               <th>600分修正</th>
               <th>800分修正</th>
               <th>标准差</th>
+              <th>校准轮数</th>
               <th>状态</th>
             </tr>
           </thead>
@@ -407,4 +409,3 @@
   <script src="./app.js" defer></script>
 </body>
 </html>
-

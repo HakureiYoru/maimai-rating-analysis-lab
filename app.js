@@ -1,4 +1,4 @@
-﻿const $ = (id) => document.getElementById(id);
+const $ = (id) => document.getElementById(id);
 const DATASET_SNAPSHOT_KEY = "mmfc-rating-analysis-lab-snapshot-v1";
 
 const initialUrlParams = new URLSearchParams(window.location.search);
@@ -819,6 +819,7 @@ function runCalibration(ratings, config) {
       rawB: p.rawB,
       lambda: p.lambda,
       eligible: p.eligible,
+      calibrationIterations: p.eligible ? history.length : 0,
       reason: p.reason,
       correction600,
       correction800,
@@ -1542,6 +1543,7 @@ function renderRaterTable(result) {
       <td class="${r.correction600 >= 0 ? "positive" : "negative"}">${r.correction600 >= 0 ? "+" : ""}${fmt(r.correction600)}</td>
       <td class="${r.correction800 >= 0 ? "positive" : "negative"}">${r.correction800 >= 0 ? "+" : ""}${fmt(r.correction800)}</td>
       <td>${fmt(r.rawStd)}</td>
+      <td>${r.calibrationIterations ? `${r.calibrationIterations}轮` : "0轮"}</td>
       <td>${raterStatus(r, result.config)}</td>
     </tr>
   `).join("");
@@ -1610,6 +1612,7 @@ function renderRaterDetail(result) {
     ["评分者", `${rater.raterName}`, shortId(rater.raterId)],
     ["身份", rater.isHighQuality ? "Qualified" : "普通", rater.isHighQuality ? "评分权重更高" : "普通权重"],
     ["评分次数", fmtInt(rater.count), `参与校准：${rater.eligible ? "是" : "否"}`],
+    ["校准轮数", rater.calibrationIterations ? `${rater.calibrationIterations}轮` : "0轮", `全局收敛 ${result.history.length} 轮`],
     ["原始均分", fmt(rater.rawMean), `标准差 ${fmt(rater.rawStd)}`],
     ["均值偏移", rater.avgLeaveOneOutDelta == null ? "-" : `${rater.avgLeaveOneOutDelta > 0 ? "+" : ""}${fmt(rater.avgLeaveOneOutDelta)}`, "相对作品其他评分者"],
     ["a / b", `${fmt(rater.a, 3)} / ${fmt(rater.b, 1)}`, "校准公式 x' = a*x + b"],
@@ -1830,6 +1833,7 @@ function exportRaters() {
     correction600: fmt(r.correction600),
     correction800: fmt(r.correction800),
     rawStd: fmt(r.rawStd),
+    calibrationIterations: r.calibrationIterations || 0,
     eligible: r.eligible ? "yes" : "no",
     reason: r.reason,
   }));
@@ -1845,6 +1849,7 @@ function exportRaters() {
     { key: "correction600", label: "600分修正" },
     { key: "correction800", label: "800分修正" },
     { key: "rawStd", label: "标准差" },
+    { key: "calibrationIterations", label: "校准轮数" },
     { key: "eligible", label: "是否参与校准" },
     { key: "reason", label: "状态" },
   ]));
@@ -1920,4 +1925,3 @@ wireEvents();
 loadInitialDataset().catch((error) => {
   setStatus(`${error.message}。如果是直接双击 HTML 打开的，请用本地服务器或手动导入 CSV。`, "warn");
 });
-
