@@ -39,9 +39,9 @@ http://127.0.0.1:8765/
 
 页面默认会加载 `data` 目录下的三张表：
 
-- `BOFcomment.csv`
-- `作品提交.csv`
-- `比赛报名.csv`
+- `comments.csv`
+- `work-submissions.csv`
+- `competition-registrations.csv`
 
 也可以在页面上手动导入新的评论表、作品表、报名表 CSV；导入数据会先在浏览器内按同一规则脱敏，再进入计算和导出。
 

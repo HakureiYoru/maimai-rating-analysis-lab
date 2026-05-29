@@ -670,12 +670,12 @@ async function fetchCsvIfExists(path) {
 async function loadBundledCsv() {
   setStatus("正在读取 data 目录中的展示 CSV ...");
   const [commentsText, worksText, registrationsText] = await Promise.all([
-    fetchCsvIfExists("./data/BOFcomment.csv"),
-    fetchCsvIfExists("./data/作品提交.csv"),
-    fetchCsvIfExists("./data/比赛报名.csv"),
+    fetchCsvIfExists("./data/comments.csv"),
+    fetchCsvIfExists("./data/work-submissions.csv"),
+    fetchCsvIfExists("./data/competition-registrations.csv"),
   ]);
 
-  if (!commentsText) throw new Error("无法读取 data/BOFcomment.csv");
+  if (!commentsText) throw new Error("无法读取 data/comments.csv");
   resetDemoAnonymizer();
   state.commentRows = sanitizeRowsForDemo("comments", parseCsv(commentsText));
   state.workRows = sanitizeRowsForDemo("works", worksText ? parseCsv(worksText) : []);
@@ -686,7 +686,7 @@ async function loadBundledCsv() {
     registrations: serializeCsvRows(state.registrationRows),
   };
   rebuildMetadata();
-  state.datasetName = `BOFcomment.csv + ${state.workRows.length ? "作品提交.csv" : "无作品表"} + ${state.registrationRows.length ? "比赛报名.csv" : "无报名表"}`;
+  state.datasetName = `comments.csv + ${state.workRows.length ? "work-submissions.csv" : "无作品表"} + ${state.registrationRows.length ? "competition-registrations.csv" : "无报名表"}`;
   $("datasetName").textContent = state.datasetName;
   rerun();
 }
@@ -1066,7 +1066,7 @@ function analyzeRows(rows, config) {
 
 function rerun() {
   if (!state.commentRows.length) {
-    setStatus("请先加载已脱敏评论表 BOFcomment.csv。");
+    setStatus("请先加载已脱敏评论表 comments.csv。");
     return;
   }
   const config = getConfig();
