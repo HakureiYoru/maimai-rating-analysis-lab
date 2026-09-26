@@ -457,6 +457,26 @@ svg {
   max-width: 280px;
 }
 
+.table-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.table-actions select {
+  min-width: 210px;
+}
+
+.table-actions input[type="search"] {
+  min-width: 220px;
+}
+
+.table-actions button {
+  white-space: nowrap;
+}
+
 .table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
@@ -712,6 +732,10 @@ tr:hover td {
   background: rgba(88, 196, 199, 0.06);
 }
 
+tr.score-insufficient td {
+  color: #aeb8c6;
+}
+
 .work-thumb {
   width: 52px;
   height: 52px;
@@ -774,6 +798,12 @@ tr:hover td {
   background: rgba(245, 166, 91, 0.12);
 }
 
+.tag.dq {
+  border-color: rgba(255, 107, 107, 0.55);
+  background: rgba(255, 107, 107, 0.12);
+  color: #ffaaaa;
+}
+
 .tag.good {
   border-color: rgba(109, 210, 140, 0.55);
   background: rgba(109, 210, 140, 0.1);
@@ -801,6 +831,11 @@ footer {
   .status-panel,
   .table-header {
     flex-direction: column;
+  }
+
+  .table-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   main,

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23131c2e'/%3E%3Cpath d='M20 75V25h15l15 22 15-22h15v50H65V49L50 70 35 49v26z' fill='%2358c4c7'/%3E%3C/svg%3E">
   <title>MMFC 评分校准展示版</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -37,7 +38,7 @@
         </div>
         <div>
           <h3>网站口径复现</h3>
-          <p>默认排除楼中楼和作者 Sc 自评；已淘汰作品照常写排名，且默认保留其评分样本用于估计评分者习惯。Qualified 评分默认按 2 票计。</p>
+          <p>默认排除楼中楼和作者 Sc 自评；已淘汰作品不进入正式排名，但保留其评分样本用于估计评分者习惯。Qualified 评分默认按 2 票计。</p>
         </div>
         <div>
           <h3>校准逻辑</h3>
@@ -69,12 +70,12 @@
         <summary>固定计算口径说明</summary>
         <div class="definition-grid">
           <div><strong>校准模型</strong><span>展示版固定使用仿射校准，同时修正评分者的整体偏高/偏低和分差尺度。</span></div>
-          <div><strong>作品风险统计</strong><span>所有有有效评分的作品都会排名；风险提示只统计评分数达到固定门槛的作品。</span></div>
+          <div><strong>作品入榜门槛</strong><span>作品至少需要 8 条正式评分才显示正式分数；同时未淘汰才进入正式排名。未满 8 评会标记为“评分不足”。</span></div>
           <div><strong>评分者参与校准</strong><span>评分次数太少时不估计个人偏差，避免因为样本巧合误判。</span></div>
           <div><strong>参数收缩</strong><span>少量评分者的校准力度会被收缩，更接近“不校准”，降低过拟合风险。</span></div>
           <div><strong>异常偏移</strong><span>600分修正超过固定阈值的评分者会被标为风险项。</span></div>
           <div><strong>Qualified 权重</strong><span>Q 用户的每条评分在作品均分里按更高票重计算，复现网站的 x2 口径。</span></div>
-          <div><strong>DQ 样本</strong><span>估计评分者偏差时保留已淘汰作品评分，避免样本过少导致校准不稳。</span></div>
+          <div><strong>DQ 样本</strong><span>已淘汰作品不占正式名次；估计评分者偏差时仍保留其评分，避免样本过少导致校准不稳。</span></div>
         </div>
       </details>
 
@@ -88,7 +89,7 @@
           <div><strong>校准分</strong><span>把每个评分者的偏严/偏松校正后，重新算出的作品分。</span></div>
           <div><strong>变化</strong><span>校准分 - 原始均分。正数表示作品被抬高，负数表示作品被压低。</span></div>
           <div><strong>封面</strong><span>从作品表的 <code>bg</code>、<code>track的複本</code> 等图片字段读取 Wix 图片引用，并按网站 HTTP function 的方式生成 CDN 缩略图。</span></div>
-          <div><strong>原始/校准排名</strong><span>分别按原始均分和校准分排序得到的名次。这里不按 DQ 或入榜门槛置空，所有有有效评分的作品都会写排名。</span></div>
+          <div><strong>原始/校准排名</strong><span>分别按原始均分和校准分排序得到的名次。未满 8 评或已淘汰的作品不进入排名，可在作品结果表中分别筛选查看。</span></div>
           <div><strong>排名变化</strong><span>原始排名 - 校准排名。正数表示校准后名次上升，负数表示下降。</span></div>
           <div><strong>标准差</strong><span>该作品收到的校准后评分分歧程度。越大说明评价越不一致。</span></div>
           <div><strong>95% CI</strong><span>粗略不确定性区间。越大表示样本少或分歧大，排名更不稳。</span></div>
@@ -127,7 +128,7 @@
         <div id="raterCoverageChart" class="chart"></div>
       </div>
       <div class="panel chart-card">
-        <div class="section-title"><h2>原始分 vs 校准分</h2><p>偏离对角线越多，说明校准改变越大。</p></div>
+        <div class="section-title"><h2>原始分 vs 校准分</h2><p>仅展示已满 8 评的作品；偏离对角线越多，说明校准改变越大。</p></div>
         <div id="rawVsCalChart" class="chart"></div>
       </div>
       <div class="panel chart-card">
@@ -152,9 +153,22 @@
       <div class="table-header">
         <div class="section-title">
           <h2>作品结果</h2>
-          <p>对比原始均分、校准后分数、完整排名和不确定性。点击作品 ID 会在新窗口打开该作品的详细可视化。</p>
+          <p>对比原始均分、校准后分数、正式排名和不确定性。评分数与淘汰状态可分别筛选；已淘汰作品不占正式名次。点击作品 ID 会在新窗口打开该作品的详细可视化。</p>
         </div>
-        <input id="workSearch" type="search" placeholder="搜索作品 ID">
+        <div class="table-actions">
+          <button id="exportWorkCsv" type="button" disabled title="按校准分导出全部作品；本地完整数据包含作者、报名 ID 和 Profile 链接，公开版仅导出脱敏信息">导出完整结果 CSV</button>
+          <select id="workRatingFilter" aria-label="作品评分数筛选">
+            <option value="eligible" selected>仅显示已满 8 评</option>
+            <option value="all">全部作品</option>
+            <option value="insufficient">仅显示评分不足</option>
+          </select>
+          <select id="workDqFilter" aria-label="作品淘汰状态筛选">
+            <option value="active" selected>仅显示未淘汰</option>
+            <option value="all">全部淘汰状态</option>
+            <option value="dq">仅显示已淘汰</option>
+          </select>
+          <input id="workSearch" type="search" placeholder="搜索作品 ID 或标题">
+        </div>
       </div>
       <div class="table-wrap">
         <table>

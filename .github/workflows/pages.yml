@@ -28,11 +28,14 @@ jobs:
         with:
           enablement: true
 
+      - name: Check public data
+        run: python scripts/check_public_data.py
+
       - name: Prepare static site
         run: |
-          mkdir _site
+          mkdir -p _site/data
           cp index.html app.js styles.css .nojekyll _site/
-          cp -R data _site/data
+          cp data/comments.csv data/work-submissions.csv data/competition-registrations.csv _site/data/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -45,3 +45,10 @@ b = λ · b_fit
 ```
 
 评分越少，`λ` 越小，结果越接近原始分。
+
+## 本地数据与公开数据
+
+- `data/` 只存放可由 GitHub Pages 公开访问的字段白名单数据；评论正文、时间、原始账号和个人链接均不进入该目录。
+- 本地完整 CSV 放在 `local-data/`；该目录已被 Git 忽略，`start.bat` 启动后会优先读取这里的数据。
+- `score-management-export.csv` 是本地管理导出，已被 Git 忽略，不会发布到 GitHub Pages。
+- `scripts/check_public_data.py` 会在本地和 Pages 工作流中检查字段白名单、UUID 和 HTTP 链接；发布前必须通过该检查。

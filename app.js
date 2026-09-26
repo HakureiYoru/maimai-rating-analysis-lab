@@ -22,6 +22,7 @@ const DEMO_CONTROL_DEFAULTS = {
 };
 
 const initialUrlParams = new URLSearchParams(window.location.search);
+const forcePublicData = initialUrlParams.get("publicData") === "1";
 const initialDetailType = ["work", "rater"].includes(initialUrlParams.get("detail"))
   ? initialUrlParams.get("detail")
   : null;
@@ -38,6 +39,10 @@ const state = {
   metadata: {
     worksById: new Map(),
     registrationsByOwner: new Map(),
+  },
+  exportMetadata: {
+    worksById: new Map(),
+    ratersById: new Map(),
   },
   detailType: initialDetailType,
   detailId: initialUrlParams.get("id") || "",
@@ -145,6 +150,7 @@ function loadStoredDatasetSnapshot() {
       registrations: serializeCsvRows(state.registrationRows),
     };
     rebuildMetadata();
+    rebuildExportMetadata(state.workRows, state.registrationRows);
     state.datasetName = snapshot.datasetName || "本地缓存数据集";
     $("datasetName").textContent = `${state.datasetName}（详情窗口快照）`;
     rerun();
@@ -661,32 +667,99 @@ function rebuildMetadata() {
   state.metadata = { worksById, registrationsByOwner };
 }
 
+function rebuildExportMetadata(workRows, registrationRows) {
+  const rawRegistrationsByOwner = new Map();
+  registrationRows.forEach((row) => {
+    const ownerId = firstNonEmpty(row, ["Owner", "_owner", "owner"]);
+    if (ownerId) rawRegistrationsByOwner.set(ownerId, row);
+  });
+
+  const ratersById = new Map();
+  rawRegistrationsByOwner.forEach((row, rawOwnerId) => {
+    const displayOwnerId = DEMO_MODE
+      ? demoUserAlias(rawOwnerId, state.demoAnonymizer)?.ownerId
+      : rawOwnerId;
+    if (!displayOwnerId) return;
+    ratersById.set(displayOwnerId, {
+      registrationName: firstNonEmpty(row, ["您的ID", "registrationName", "firstName", "ID"]) || "未知用户",
+    });
+  });
+
+  const worksById = new Map();
+  workRows.forEach((row) => {
+    const workId = firstNonEmpty(row, ["sequenceId", "workNumber", "作品ID", "编号"]);
+    if (!workId) return;
+    const rawOwnerId = firstNonEmpty(row, ["Owner", "_owner", "owner"]);
+    const registration = rawRegistrationsByOwner.get(rawOwnerId);
+    const registrationName = registration
+      ? firstNonEmpty(registration, ["您的ID", "registrationName", "firstName", "ID"])
+      : "";
+    worksById.set(workId, {
+      authorName: firstNonEmpty(row, [
+        "不要在designer栏位填写自己的真实ID！/ Do not put your real ID in the designer field ！",
+        "designer",
+        "作者",
+      ]) || registrationName || "未知投稿人",
+      registrationName: registrationName || "-",
+      profileLink: registration
+        ? firstNonEmpty(registration, [
+          "你的MMFC官网主页链接（右上角PROFILE网址）",
+          "你的MMFC官网链接（请在右上角账号主页PROFILE查看）",
+        ]) || "-"
+        : "-",
+    });
+  });
+
+  state.exportMetadata = { worksById, ratersById };
+}
+
 async function fetchCsvIfExists(path) {
   const response = await fetch(path, { cache: "no-store" });
   if (!response.ok) return null;
   return response.text();
 }
 
+async function fetchCsvFromCandidates(paths) {
+  for (const path of paths) {
+    const text = await fetchCsvIfExists(path);
+    if (text != null) return { text, path };
+  }
+  return { text: null, path: "" };
+}
+
 async function loadBundledCsv() {
   setStatus("正在读取 data 目录中的展示 CSV ...");
-  const [commentsText, worksText, registrationsText] = await Promise.all([
-    fetchCsvIfExists("./data/comments.csv"),
-    fetchCsvIfExists("./data/work-submissions.csv"),
-    fetchCsvIfExists("./data/competition-registrations.csv"),
+  const mayUseLocalData = !forcePublicData && ["127.0.0.1", "localhost"].includes(window.location.hostname);
+  const csvCandidates = (fileName) => mayUseLocalData
+    ? [`./local-data/${fileName}`, `./data/${fileName}`]
+    : [`./data/${fileName}`];
+  const [commentsSource, worksSource, registrationsSource] = await Promise.all([
+    fetchCsvFromCandidates(csvCandidates("comments.csv")),
+    fetchCsvFromCandidates(csvCandidates("work-submissions.csv")),
+    fetchCsvFromCandidates(csvCandidates("competition-registrations.csv")),
   ]);
+  const commentsText = commentsSource.text;
+  const worksText = worksSource.text;
+  const registrationsText = registrationsSource.text;
 
   if (!commentsText) throw new Error("无法读取 data/comments.csv");
   resetDemoAnonymizer();
-  state.commentRows = sanitizeRowsForDemo("comments", parseCsv(commentsText));
-  state.workRows = sanitizeRowsForDemo("works", worksText ? parseCsv(worksText) : []);
-  state.registrationRows = sanitizeRowsForDemo("registrations", registrationsText ? parseCsv(registrationsText) : []);
+  const rawCommentRows = parseCsv(commentsText);
+  const rawWorkRows = worksText ? parseCsv(worksText) : [];
+  const rawRegistrationRows = registrationsText ? parseCsv(registrationsText) : [];
+  state.commentRows = sanitizeRowsForDemo("comments", rawCommentRows);
+  state.workRows = sanitizeRowsForDemo("works", rawWorkRows);
+  state.registrationRows = sanitizeRowsForDemo("registrations", rawRegistrationRows);
   state.csvTexts = {
     comments: serializeCsvRows(state.commentRows),
     works: serializeCsvRows(state.workRows),
     registrations: serializeCsvRows(state.registrationRows),
   };
   rebuildMetadata();
-  state.datasetName = `comments.csv + ${state.workRows.length ? "work-submissions.csv" : "无作品表"} + ${state.registrationRows.length ? "competition-registrations.csv" : "无报名表"}`;
+  rebuildExportMetadata(rawWorkRows, rawRegistrationRows);
+  const usesLocalData = [commentsSource, worksSource, registrationsSource]
+    .some((source) => source.path.startsWith("./local-data/"));
+  state.datasetName = `${usesLocalData ? "本地完整数据" : "脱敏展示数据"}：comments.csv + ${state.workRows.length ? "work-submissions.csv" : "无作品表"} + ${state.registrationRows.length ? "competition-registrations.csv" : "无报名表"}`;
   $("datasetName").textContent = state.datasetName;
   rerun();
 }
@@ -814,16 +887,16 @@ function compareWorkId(a, b) {
   return String(a.workId).localeCompare(String(b.workId), "zh");
 }
 
-function rankItems(items, scoreKey) {
+function rankItems(items, scoreKey, isEligible = () => true) {
   const ranked = items
-    .filter((item) => Number.isFinite(item[scoreKey]))
+    .filter((item) => isEligible(item) && Number.isFinite(item[scoreKey]))
     .sort((a, b) => b[scoreKey] - a[scoreKey] || compareWorkId(a, b));
   const map = new Map();
   ranked.forEach((item, index) => map.set(item.workId, index + 1));
   return map;
 }
 
-function buildBaseStats(ratings, config) {
+function buildBaseStats(ratings, config, metadata = null) {
   const byWork = groupBy(ratings, (r) => r.workId);
   const byRater = groupBy(ratings, (r) => r.raterId);
   const rawGlobalMean = weightedMean(ratings, (r) => r.score);
@@ -831,12 +904,16 @@ function buildBaseStats(ratings, config) {
   const workStats = [...byWork.entries()].map(([workId, rows]) => {
     const scores = rows.map((r) => r.score);
     const highWeightCount = rows.filter((r) => r.isHighQuality).length;
+    const isDQ = rows[0]?.isDQ === true;
+    const scoreEligible = rows.length >= config.minWorkRatings;
     return {
       workId,
       title: rows[0]?.workTitle || `#${workId}`,
-      isDQ: rows[0]?.isDQ === true,
+      isDQ,
       coverThumbUrl: rows[0]?.workCoverThumbUrl || "",
       count: rows.length,
+      scoreEligible,
+      rankingEligible: scoreEligible && !isDQ,
       highWeightCount,
       lowWeightCount: rows.length - highWeightCount,
       rawMean: weightedMean(rows, (r) => r.score),
@@ -849,7 +926,32 @@ function buildBaseStats(ratings, config) {
     };
   });
 
-  const rawRankMap = rankItems(workStats, "rawMean");
+  if (config.useWorksTable && metadata?.worksById) {
+    const ratedWorkIds = new Set(workStats.map((work) => work.workId));
+    metadata.worksById.forEach((work, workId) => {
+      if (ratedWorkIds.has(workId)) return;
+      workStats.push({
+        workId,
+        title: work.title || `#${workId}`,
+        isDQ: work.isDQ === true,
+        coverThumbUrl: work.coverThumbUrl || "",
+        count: 0,
+        scoreEligible: false,
+        rankingEligible: false,
+        highWeightCount: 0,
+        lowWeightCount: 0,
+        rawMean: null,
+        rawSimpleMean: null,
+        rawMedian: null,
+        rawStd: null,
+        rawCi95: null,
+        totalWeight: 0,
+        rows: [],
+      });
+    });
+  }
+
+  const rawRankMap = rankItems(workStats, "rawMean", (work) => work.rankingEligible);
   workStats.forEach((work) => {
     work.rawRank = rawRankMap.get(work.workId) || null;
   });
@@ -906,9 +1008,11 @@ function fitRater(rows, qByWork, config) {
   };
 }
 
-function runCalibration(ratings, config) {
-  const base = buildBaseStats(ratings, config);
-  let qByWork = new Map(base.workStats.map((work) => [work.workId, work.rawMean]));
+function runCalibration(ratings, config, metadata = null) {
+  const base = buildBaseStats(ratings, config, metadata);
+  let qByWork = new Map(base.workStats
+    .filter((work) => Number.isFinite(work.rawMean))
+    .map((work) => [work.workId, work.rawMean]));
   let params = new Map();
   const history = [];
 
@@ -965,6 +1069,16 @@ function runCalibration(ratings, config) {
       ...r,
       normalized: normalizedByRating.get(r.id) ?? r.score,
     }));
+    if (!normalizedRows.length) {
+      return {
+        ...work,
+        calibratedMean: null,
+        calibratedMedian: null,
+        calibratedStd: null,
+        calibratedCi95: null,
+        scoreDelta: null,
+      };
+    }
     const normalizedValues = normalizedRows.map((r) => r.normalized);
     return {
       ...work,
@@ -976,7 +1090,7 @@ function runCalibration(ratings, config) {
     };
   });
 
-  const calibratedRankMap = rankItems(workStats, "calibratedMean");
+  const calibratedRankMap = rankItems(workStats, "calibratedMean", (work) => work.rankingEligible);
   workStats.forEach((work) => {
     work.calibratedRank = calibratedRankMap.get(work.workId) || null;
     work.rankChange = work.rawRank && work.calibratedRank ? work.rawRank - work.calibratedRank : null;
@@ -1043,7 +1157,7 @@ function runCalibration(ratings, config) {
 
 function analyzeRows(rows, config) {
   const normalized = normalizeRows(rows, config, state.metadata);
-  const result = runCalibration(normalized.ratings, config);
+  const result = runCalibration(normalized.ratings, config, state.metadata);
   result.skipped = normalized.skipped;
   return result;
 }
@@ -1068,6 +1182,7 @@ function rerun() {
 function renderAll() {
   const result = state.result;
   if (!result) return;
+  $("exportWorkCsv").disabled = false;
   applyPageMode();
   renderBadges(result);
   if (isDetailMode()) {
@@ -1096,20 +1211,24 @@ function renderAll() {
 }
 
 function renderBadges(result) {
-  const works = new Set(result.ratings.map((r) => r.workId)).size;
+  const works = result.workStats.length;
   const raters = new Set(result.ratings.map((r) => r.raterId)).size;
   const qRaters = result.raterStats.filter((r) => r.isHighQuality).length;
+  const insufficientWorks = result.workStats.filter((w) => !w.scoreEligible).length;
+  const dqWorks = result.workStats.filter((w) => w.isDQ).length;
   setBadges([
     `${fmtInt(state.commentRows.length)} 行评论表`,
     `${fmtInt(state.workRows.length)} 行作品表`,
     `${fmtInt(state.registrationRows.length)} 行报名表`,
     `${fmtInt(result.ratings.length)} 条有效正式评分`,
     `${fmtInt(works)} 个作品`,
+    `${fmtInt(insufficientWorks)} 个评分不足`,
+    `${fmtInt(dqWorks)} 个已淘汰作品`,
     `${fmtInt(raters)} 个评分者`,
     `${fmtInt(qRaters)} 个 Q 评分者`,
     `排除回复 ${fmtInt(result.skipped.replies)}`,
     `排除自评 ${fmtInt(result.skipped.selfComments)}`,
-    `排除淘汰 ${fmtInt(result.skipped.dqWorks)}`,
+    `校准样本排除 DQ ${fmtInt(result.skipped.dqWorks)}`,
   ]);
 }
 
@@ -1117,14 +1236,14 @@ function renderMetrics(result) {
   const works = result.workStats;
   const raters = result.raterStats;
   const rankedWorks = works.filter((w) => w.rawRank != null && w.calibratedRank != null);
-  const stableRankedWorks = rankedWorks.filter((w) => w.count >= result.config.minWorkRatings);
+  const stableRankedWorks = rankedWorks.filter((w) => w.rankingEligible);
   const density = works.length && raters.length ? result.ratings.length / (works.length * raters.length) : 0;
   const highRiskRaters = raters.filter((r) => r.count >= result.config.minRaterRatings && Math.abs(r.correction600) >= result.config.biasThreshold).length;
   const changedWorks = stableRankedWorks.filter((w) => w.rankChange != null && Math.abs(w.rankChange) >= 10).length;
 
   const cards = [
     ["有效正式评分", fmtInt(result.ratings.length), `评论表原始行 ${fmtInt(state.commentRows.length)}`],
-    ["作品数", fmtInt(works.length), `已写排名 ${fmtInt(rankedWorks.length)}`],
+    ["作品数", fmtInt(works.length), `满 ${result.config.minWorkRatings} 评且未淘汰并排名 ${fmtInt(rankedWorks.length)}`],
     ["评分者数", fmtInt(raters.length), `参与校准 ${fmtInt(raters.filter((r) => r.eligible).length)}`],
     ["Qualified 评分者", fmtInt(raters.filter((r) => r.isHighQuality).length), `权重 x${result.config.useHighWeight ? result.config.highWeightMultiplier : 1}`],
     ["评分矩阵密度", `${(density * 100).toFixed(2)}%`, "越低越依赖校准与任务覆盖"],
@@ -1166,7 +1285,7 @@ function renderCharts(result) {
   renderBarChart("scoreHistogram", histogram(result.ratings.map((r) => r.score), scoreBins), { valueKey: "count", color: "#58c4c7" });
 
   const workCounts = result.workStats.map((w) => w.count);
-  renderBarChart("workCoverageChart", bucketCounts(workCounts, [1, 4, 7, 10, 13, 16, 20, 30, 999], ["1-3", "4-6", "7-9", "10-12", "13-15", "16-19", "20-29", "30+"]), { valueKey: "count", color: "#f1c75b" });
+  renderBarChart("workCoverageChart", bucketCounts(workCounts, [0, 4, 7, 10, 13, 16, 20, 30, 999], ["0-3", "4-6", "7-9", "10-12", "13-15", "16-19", "20-29", "30+"]), { valueKey: "count", color: "#f1c75b" });
 
   const raterCounts = result.raterStats.map((r) => r.count);
   renderBarChart("raterCoverageChart", bucketCounts(raterCounts, [1, 2, 5, 8, 12, 20, 35, 60, 999], ["1", "2-4", "5-7", "8-11", "12-19", "20-34", "35-59", "60+"]), { valueKey: "count", color: "#6dd28c" });
@@ -1416,7 +1535,9 @@ function renderRawVsCal(elementId, result) {
   const max = result.config.scoreMax;
   const sx = (v) => pad.left + ((v - min) / (max - min)) * (width - pad.left - pad.right);
   const sy = (v) => height - pad.bottom - ((v - min) / (max - min)) * (height - pad.top - pad.bottom);
-  const points = result.workStats.map((w) => `
+  const points = result.workStats
+    .filter((w) => w.scoreEligible && Number.isFinite(w.rawMean) && Number.isFinite(w.calibratedMean))
+    .map((w) => `
     <circle cx="${sx(w.rawMean)}" cy="${sy(w.calibratedMean)}" r="${Math.min(7, 2 + Math.sqrt(w.count))}" fill="${w.count >= result.config.minWorkRatings ? "#58c4c7" : "#6c7786"}" opacity="0.72">
       <title>#${escapeHtml(w.workId)} raw ${fmt(w.rawMean)} -> calibrated ${fmt(w.calibratedMean)} (${w.count} ratings)</title>
     </circle>
@@ -1553,7 +1674,7 @@ function renderWarnings(result) {
     });
 
   result.workStats
-    .filter((w) => w.count >= result.config.minWorkRatings && w.calibratedCi95 != null)
+    .filter((w) => w.rankingEligible && w.calibratedCi95 != null)
     .sort((a, b) => b.calibratedCi95 - a.calibratedCi95)
     .slice(0, 8)
     .forEach((w) => {
@@ -1608,32 +1729,93 @@ function renderWarnings(result) {
 
 function renderWorkTable(result) {
   const query = $("workSearch").value.trim().toLowerCase();
+  const ratingFilter = $("workRatingFilter").value;
+  const dqFilter = $("workDqFilter").value;
   const rows = result.workStats
+    .filter((w) => ratingFilter === "all" || (ratingFilter === "eligible" ? w.scoreEligible : !w.scoreEligible))
+    .filter((w) => dqFilter === "all" || (dqFilter === "dq" ? w.isDQ : !w.isDQ))
     .filter((w) => !query || String(w.workId).toLowerCase().includes(query) || String(w.title).toLowerCase().includes(query))
     .sort(compareWorks)
     .slice(0, 260);
 
-  $("worksTable").innerHTML = rows.map((w) => `
-    <tr>
-      <td>${renderWorkThumb(w)}</td>
-      <td>${detailAnchor("work", w.workId, `#${w.workId}`, "在新窗口打开作品明细")}</td>
-      <td>${escapeHtml(w.title)} ${w.isDQ ? '<span class="tag">DQ</span>' : ''}</td>
-      <td>${w.count}</td>
-      <td>${w.highWeightCount}/${w.lowWeightCount}</td>
-      <td class="score-pair-from">${fmt(w.rawMean)}</td>
-      <td class="score-pair-to"><strong>${fmt(w.calibratedMean)}</strong></td>
-      <td class="${w.scoreDelta >= 0 ? "positive" : "negative"}">${w.scoreDelta >= 0 ? "+" : ""}${fmt(w.scoreDelta)}</td>
-      <td>${w.rawRank ?? "-"}</td>
-      <td>${w.calibratedRank ?? "-"}</td>
-      <td class="${(w.rankChange || 0) >= 0 ? "positive" : "negative"}">${w.rankChange == null ? "-" : `${w.rankChange > 0 ? "+" : ""}${w.rankChange}`}</td>
-      <td>${fmt(w.calibratedStd)}</td>
-      <td>${w.calibratedCi95 == null ? "-" : `±${fmt(w.calibratedCi95)}`}</td>
-    </tr>
-  `).join("");
+  $("worksTable").innerHTML = rows.length ? rows.map((w) => {
+    const scoreText = w.scoreEligible ? fmt(w.rawMean) : '<span class="muted">评分不足</span>';
+    const calibratedText = w.scoreEligible ? `<strong>${fmt(w.calibratedMean)}</strong>` : '<span class="muted">评分不足</span>';
+    const deltaText = w.scoreEligible ? `${w.scoreDelta >= 0 ? "+" : ""}${fmt(w.scoreDelta)}` : "-";
+    const deltaClass = w.scoreEligible ? (w.scoreDelta >= 0 ? "positive" : "negative") : "muted";
+    const countStatus = w.scoreEligible ? "" : ` <span class="tag warn">未满 ${result.config.minWorkRatings} 评</span>`;
+    return `
+      <tr class="${w.scoreEligible ? "" : "score-insufficient"}">
+        <td>${renderWorkThumb(w)}</td>
+        <td>${detailAnchor("work", w.workId, `#${w.workId}`, "在新窗口打开作品明细")}</td>
+        <td>${escapeHtml(w.title)} ${w.isDQ ? '<span class="tag dq">已淘汰</span>' : ''}</td>
+        <td>${w.count}${countStatus}</td>
+        <td>${w.highWeightCount}/${w.lowWeightCount}</td>
+        <td class="score-pair-from">${scoreText}</td>
+        <td class="score-pair-to">${calibratedText}</td>
+        <td class="${deltaClass}">${deltaText}</td>
+        <td>${w.rawRank ?? "-"}</td>
+        <td>${w.calibratedRank ?? "-"}</td>
+        <td class="${(w.rankChange || 0) >= 0 ? "positive" : "negative"}">${w.rankChange == null ? "-" : `${w.rankChange > 0 ? "+" : ""}${w.rankChange}`}</td>
+        <td>${fmt(w.calibratedStd)}</td>
+        <td>${w.calibratedCi95 == null ? "-" : `±${fmt(w.calibratedCi95)}`}</td>
+      </tr>
+    `;
+  }).join("") : '<tr><td colspan="13" class="muted">没有符合筛选条件的作品。</td></tr>';
 
   wireDetailLinks($("worksTable"));
 
   updateWorkSortHeaders();
+}
+
+function buildWorkExportRows(result) {
+  const rankedCount = result.workStats.filter((work) => work.calibratedRank != null).length;
+  return [...result.workStats]
+    .sort((a, b) => compareNullable(a.calibratedMean, b.calibratedMean, "desc")
+      || compareNullable(workSortValue(a, "workId"), workSortValue(b, "workId"), "asc"))
+    .map((work) => {
+      const identity = state.exportMetadata.worksById.get(work.workId) || {};
+      const tier = work.isDQ
+        ? "已淘汰"
+        : (work.scoreEligible
+          ? ((work.calibratedRank || rankedCount) / Math.max(1, rankedCount) <= 0.4 ? "↑" : "↓")
+          : "评分不足");
+      const raters = work.rows.map((rating) => {
+        const raterIdentity = state.exportMetadata.ratersById.get(rating.raterId);
+        const name = raterIdentity?.registrationName || rating.raterName || "未知用户";
+        return `${name}(${fmt(rating.score, 0)}分)`;
+      }).join("; ");
+      return {
+        作品ID: work.workId,
+        作品标题: work.title,
+        作者: identity.authorName || "未知投稿人",
+        报名ID: identity.registrationName || "-",
+        Profile链接: identity.profileLink || "-",
+        等级: tier,
+        排名: work.calibratedRank ?? "-",
+        平均分: work.count > 0 ? fmt(work.calibratedMean, 2) : "-",
+        评论数: work.count,
+        评论者列表: raters,
+      };
+    });
+}
+
+function downloadWorkResultsCsv() {
+  if (!state.result) {
+    setStatus("数据尚未计算完成，暂时无法导出。", "warn");
+    return;
+  }
+  const rows = buildWorkExportRows(state.result);
+  const blob = new Blob(["\uFEFF", serializeCsvRows(rows)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "score-management-export.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setStatus(`已导出 ${fmtInt(rows.length)} 个作品的校准结果。`);
 }
 
 function renderWorkThumb(work) {
@@ -1653,6 +1835,7 @@ function renderWorkThumb(work) {
 function workSortValue(work, key) {
   if (key === "workId") return Number(work.workId) || String(work.workId);
   if (key === "title") return String(work.title || "");
+  if (!work.scoreEligible && ["rawMean", "calibratedMean", "scoreDelta", "rawRank", "calibratedRank", "rankChange"].includes(key)) return null;
   if (key === "rankChange") return work.rankChange == null ? null : work.rankChange;
   return work[key] ?? null;
 }
@@ -1784,6 +1967,7 @@ function getRaterDetailRows(result, raterId) {
         workRawMean: work?.rawMean ?? null,
         workCalibratedMean: work?.calibratedMean ?? null,
         workCalibratedRank: work?.calibratedRank ?? null,
+        workScoreEligible: work?.scoreEligible === true,
         otherMean,
         deltaFromOthers: otherMean == null ? null : rating.score - otherMean,
         workCount: work?.count ?? 0,
@@ -1843,12 +2027,12 @@ function renderRaterDetail(result) {
 
   $("raterDetailTable").innerHTML = rows.map((row) => `
     <tr>
-      <td>${detailAnchor("work", row.workId, `#${row.workId}`, "在新窗口打开作品明细")}${row.workIsDQ ? ' <span class="tag">DQ</span>' : ''}</td>
+      <td>${detailAnchor("work", row.workId, `#${row.workId}`, "在新窗口打开作品明细")}${row.workIsDQ ? ' <span class="tag dq">已淘汰</span>' : ''}</td>
       <td>${escapeHtml(row.workTitle)}</td>
       <td class="score-pair-from">${fmt(row.score, 0)}</td>
       <td class="score-pair-to"><strong>${fmt(row.normalized)}</strong></td>
       <td class="${row.scoreDelta >= 0 ? "positive" : "negative"}">${row.scoreDelta >= 0 ? "+" : ""}${fmt(row.scoreDelta)}</td>
-      <td>${row.workRawMean == null ? "-" : fmt(row.workRawMean)}</td>
+      <td>${row.workScoreEligible ? fmt(row.workRawMean) : '<span class="muted">评分不足</span>'}</td>
       <td class="${(row.deltaFromOthers || 0) >= 0 ? "positive" : "negative"}">${row.deltaFromOthers == null ? "-" : `${row.deltaFromOthers > 0 ? "+" : ""}${fmt(row.deltaFromOthers)}`}</td>
       <td>${row.workCalibratedRank ?? "-"}</td>
       <td><div class="comment-excerpt" title="${escapeHtml(row.comment)}">${escapeHtml(row.comment || "-")}</div></td>
@@ -1863,7 +2047,7 @@ function renderWorkDetailOptions(result) {
   const current = select.value;
   const options = result.workStats
     .sort((a, b) => Number(a.workId) - Number(b.workId))
-    .map((w) => `<option value="${escapeHtml(w.workId)}">#${escapeHtml(w.workId)} ${escapeHtml(w.title)} (${w.count}评, 校准 ${fmt(w.calibratedMean)})</option>`)
+    .map((w) => `<option value="${escapeHtml(w.workId)}">#${escapeHtml(w.workId)} ${escapeHtml(w.title)} (${w.count}评, ${w.scoreEligible ? `校准 ${fmt(w.calibratedMean)}` : "评分不足"})</option>`)
     .join("");
   select.innerHTML = options;
   if (current && [...select.options].some((option) => option.value === current)) select.value = current;
@@ -1901,9 +2085,10 @@ function renderWorkDetail(result) {
 
   const rows = getWorkDetailRows(result, work);
   const qWeight = result.config.useHighWeight ? result.config.highWeightMultiplier : 1;
+  const scoreStatus = work.scoreEligible ? null : `需满 ${result.config.minWorkRatings} 评，当前 ${work.count} 评`;
   const profileCards = [
-    ["原始均分", fmt(work.rawMean), `原始排名 ${work.rawRank ?? "-"}`],
-    ["校准分", fmt(work.calibratedMean), `校准排名 ${work.calibratedRank ?? "-"}`],
+    ["原始均分", work.scoreEligible ? fmt(work.rawMean) : "评分不足", scoreStatus || `原始排名 ${work.rawRank ?? "-"}`],
+    ["校准分", work.scoreEligible ? fmt(work.calibratedMean) : "评分不足", scoreStatus || `校准排名 ${work.calibratedRank ?? "-"}`],
     ["排名变化", work.rankChange == null ? "-" : signedFmt(work.rankChange, 0), "正数表示校准后上升"],
     ["评分数", fmtInt(work.count), `Q/普通 ${work.highWeightCount}/${work.lowWeightCount}`],
     ["标准差", fmt(work.calibratedStd), `95% CI ${work.calibratedCi95 == null ? "-" : `±${fmt(work.calibratedCi95)}`}`],
@@ -1933,7 +2118,7 @@ function renderWorkDetail(result) {
   renderWorkCalibrationChart("workCalibrationChart", rows);
   renderWorkDeviationChart("workDeviationChart", rows, work);
 
-  $("workDetailTable").innerHTML = rows.map((r) => `
+  $("workDetailTable").innerHTML = rows.length ? rows.map((r) => `
     <tr>
       <td title="${escapeHtml(r.raterId)}">${detailAnchor("rater", r.raterId, r.raterName, "在新窗口打开评分者详情")}<br><span class="muted">${escapeHtml(shortId(r.raterId))}</span></td>
       <td>${r.isHighQuality ? '<span class="tag warn">Q</span>' : '<span class="tag">普通</span>'}</td>
@@ -1948,7 +2133,7 @@ function renderWorkDetail(result) {
       <td>${escapeHtml(formatDateTime(r.createdDate))}</td>
       <td><div class="comment-excerpt" title="${escapeHtml(r.comment)}">${escapeHtml(r.comment || "-")}</div></td>
     </tr>
-  `).join("");
+  `).join("") : '<tr><td colspan="12" class="muted">该作品暂无有效正式评分。</td></tr>';
 
   wireDetailLinks($("workDetailTable"));
 }
@@ -1966,6 +2151,9 @@ function wireEvents() {
   });
 
   $("workSearch").addEventListener("input", debounce(() => state.result && renderWorkTable(state.result), 180));
+  $("workRatingFilter").addEventListener("change", () => state.result && renderWorkTable(state.result));
+  $("workDqFilter").addEventListener("change", () => state.result && renderWorkTable(state.result));
+  $("exportWorkCsv").addEventListener("click", downloadWorkResultsCsv);
   $("raterSearch").addEventListener("input", debounce(() => state.result && renderRaterTable(state.result), 180));
   $("raterDetailSelect").addEventListener("change", () => {
     if (!state.result) return;

@@ -16,7 +16,8 @@ echo http://127.0.0.1:%PORT%/
 echo Press Ctrl+C to stop the server
 echo.
 
-start "" "http://127.0.0.1:%PORT%/"
+set "URL=http://127.0.0.1:%PORT%/?refresh=%RANDOM%"
+start "" /b powershell.exe -NoProfile -WindowStyle Hidden -Command "$ProgressPreference='SilentlyContinue'; $url='%URL%'; for ($i=0; $i -lt 40; $i++) { try { $response=Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 1; if ($response.StatusCode -eq 200) { Start-Process $url; exit } } catch {}; Start-Sleep -Milliseconds 250 }; Start-Process $url"
 
 where py >nul 2>&1
 if errorlevel 1 goto use_python
